@@ -13,3 +13,12 @@ screenBuilders.editor(PlannedWork.class, this)
                                         plannedWorksTable.repaint();
                                         });
                                     .show();
+
+Screen screen = screenBuilders.editor(PlannedWork.class, this)
+    .editEntity(plannedWorksDc.getItem(plannedWorkEndItem.getId()))
+    .withOpenMode(OpenMode.DIALOG)
+    .build();
+screen.addAfterCloseListener(afterCloseEvent -> {
+    // do something after screen is closed
+});
+screen.show(); // вызвать для screen
