@@ -22,3 +22,15 @@ screen.addAfterCloseListener(afterCloseEvent -> {
     // do something after screen is closed
 });
 screen.show(); // вызвать для screen
+
+screenBuilders.screen(this)
+                                    .withScreenClass(PlannedWorkEdit.class)
+                                    .withAfterCloseListener(afterCloseEvent -> {
+                                        int versionWithComment = clickableRendererClickEvent.getItem().getVersion();
+                                        plannedWorksDc.getItem(plannedWorkEndItem.getId()).setVersion(versionWithComment);//Обновление optimistic lock
+                                        plannedWorkService.setFinishedPlannedWorkToReport(plannedWorksDc.getItem(plannedWorkEndItem.getId()));
+                                        plannedWorksDl.load();
+                                        plannedWorksTable.repaint();
+                                    })
+                                    .build()
+                                    .show();
