@@ -9,3 +9,5 @@ NoUniqueBeanDefinitionException: No qualifying bean of type 'org.springframework
 
 Exception in thread "task-1" java.lang.IllegalStateException: Authentication is not set. Use SystemAuthenticator in non-user requests like schedulers or asynchronous calls.
 
+Exception in thread "task-1" io.jmix.ui.executor.IllegalConcurrentAccessException: UI Shared state was accessed from a background thread
+
