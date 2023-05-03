@@ -11,3 +11,13 @@ Exception in thread "task-1" java.lang.IllegalStateException: Authentication is 
 
 Exception in thread "task-1" io.jmix.ui.executor.IllegalConcurrentAccessException: UI Shared state was accessed from a background thread
 
+Timer timer = new Timer();
+        timer.schedule(new TimerTask() {
+            @Override
+            public void run() {
+                log.info("Starting update UI...");
+                plannedWorksDl.load();
+                log.info("finished update UI");
+            }
+        }, 0, 60*1000);
+
