@@ -13,3 +13,5 @@ Timer timer = new Timer();
             }
         }, 0, 60*1000);
 
+Exception in thread "Timer-0" io.jmix.ui.executor.IllegalConcurrentAccessException: UI Shared state was accessed from a background thread
+
