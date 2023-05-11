@@ -1,17 +1,28 @@
 # hello-world
 Just my first repository
 
-Exception in thread "Timer-0" java.lang.IllegalStateException: Authentication is not set. Use SystemAuthenticator in non-user requests like schedulers or asynchronous calls.
-
-Timer timer = new Timer();
-        timer.schedule(new TimerTask() {
-            @Override
-            public void run() {
-                log.info("Starting update UI...");
-                plannedWorksDl.load();
-                log.info("finished update UI");
+User user = usersTable.getSingleSelected();
+        RoleAssignmentEntity roleAssignment = dataManager.create(RoleAssignmentEntity.class);
+        if (user != null) {
+            boolean hasRole = dataManager.load(RoleAssignmentEntity.class)
+                    .query("select r from sec_RoleAssignmentEntity r where r.username = :username and r.roleCode = :roleCode")
+                    .parameter("username", user.getUsername())
+                    .parameter("roleCode", "manager")
+                    .optional()
+                    .isPresent();
+            if (!hasRole) {
+                roleAssignment.setUsername(user.getUsername());
+                roleAssignment.setRoleCode("manager");
+                roleAssignment.setRoleType(RoleAssignmentRoleType.RESOURCE);
+                dataManager.save(roleAssignment);
+                notifications.create(Notifications.NotificationType.WARNING)
+                        .withCaption("Пользователю присвоена роль Менеджера")
+                        .show();
+            } else {
+                notifications.create(Notifications.NotificationType.ERROR)
+                        .withCaption("Ошибка")
+                        .withDescription("Пользователь уже имеет роль Менеджера")
+                        .show();
             }
-        }, 0, 60*1000);
-
-Exception in thread "Timer-0" io.jmix.ui.executor.IllegalConcurrentAccessException: UI Shared state was accessed from a background thread
+        }
 
