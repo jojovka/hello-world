@@ -6,3 +6,5 @@ If the file is not corrupt, please open an issue on bugzilla to request
 increasing the maximum allowable size for this record type.
 As a temporary workaround, consider setting a higher override value with IOUtils.setByteArrayMaxOverride()
 
+implementation 'org.dhatim:fastexcel-reader:0.12.0
+
