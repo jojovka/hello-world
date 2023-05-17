@@ -1,10 +1,14 @@
 # hello-world
 Just my first repository
 
-RecordFormatException: Tried to allocate an array of length 1,326,463,498, but the maximum length for this record type is 100,000,000.
-If the file is not corrupt, please open an issue on bugzilla to request 
-increasing the maximum allowable size for this record type.
-As a temporary workaround, consider setting a higher override value with IOUtils.setByteArrayMaxOverride()
-
-implementation 'org.dhatim:fastexcel-reader:0.12.0
-
+@Install(to = "plannedWorksTable", subject = "rowStyleProvider")
+    private String styledGridRowStyleProvider(PlannedWork plannedWork) {
+        if (LocalDateTime.now().isAfter(plannedWork.getScheduledStartDateTime().minusMinutes(10)) && LocalDateTime.now().isBefore(plannedWork.getScheduledStartDateTime())) {
+            return "ten-minutes";
+        } else if (LocalDateTime.now().isAfter(plannedWork.getScheduledEndDateTime())) {
+            return "late";
+        }else if (LocalDateTime.now().isAfter(plannedWork.getScheduledStartDateTime()) && LocalDateTime.now().isBefore(plannedWork.getScheduledEndDateTime())) {
+            return "started";
+        }
+        return null;
+    }
