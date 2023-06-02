@@ -1,36 +1,21 @@
 # hello-world
 Just my first repository
 
-public void zabbixAuth() throws URISyntaxException {
-        Long id = new Random().nextLong();
+public RestTemplate restTemplate() throws KeyStoreException, NoSuchAlgorithmException, KeyManagementException {
+    TrustStrategy acceptingTrustStrategy = (X509Certificate[] chain, String authType) -> true;
 
-        RestTemplate restTemplate = new RestTemplate();
+    SSLContext sslContext = org.apache.http.ssl.SSLContexts.custom()
+            .loadTrustMaterial(null, acceptingTrustStrategy)
+            .build();
 
-        URI uri = new URI("https://zabbixapp.eub.kz/api_jsonrpc.php");
+    SSLConnectionSocketFactory csf = new SSLConnectionSocketFactory(sslContext, NoopHostnameVerifier.INSTANCE);
 
-        HttpHeaders headers = new HttpHeaders();
-        headers.set("Content-Type", "application/json-rpc");
+    CloseableHttpClient httpClient = HttpClients.custom()
+            .setSSLSocketFactory(csf)
+            .build();
 
-        JSONObject body = new JSONObject();
-        body.put("jsonrpc", "2.0");
-        body.put("method", "user.login");
-
-        JSONObject params = new JSONObject();
-        params.put("user", "s-jmix-hq");
-        params.put("password", "MR9ME79TAOx97ycW8JnB5h5V");
-
-        body.put("params", params);
-        body.put("id", id);
-        body.put("auth", null);
-
-        HttpEntity<String> entity = new HttpEntity<>(body.toString(), headers);
-
-        ResponseEntity<String> response = restTemplate.exchange(uri, HttpMethod.POST, entity, String.class);
-
-        System.out.println("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$");
-        System.out.println("Auth");
-        System.out.println(response.getBody());
-        System.out.println("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$");
-    }
-
-org.springframework.web.client.ResourceAccessException: I/O error on POST request for "https://zabbixapp.eub.kz/api_jsonrpc.php": PKIX path building failed: sun.security.provider.certpath.SunCertPathBuilderException: unable to find valid certification path to requested target; nested exception is javax.net.ssl.SSLHandshakeException: PKIX path building failed: sun.security.provider.certpath.SunCertPathBuilderException: unable to find valid certification path to requested target
+    HttpComponentsClientHttpRequestFactory requestFactory = new HttpComponentsClientHttpRequestFactory();
+    requestFactory.setHttpClient(httpClient);
+    
+    return new RestTemplate(requestFactory);
+}
