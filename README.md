@@ -27,3 +27,5 @@ public class EmailReportsService {
         }
     }
 }
+
+java.lang.RuntimeException: Yerbol.Shayakhmetov@eubank.kz; zarina.zhaparova@eubank.kz : Failed messages: com.sun.mail.smtp.SMTPSendFailedException: 552 #5.3.4 message size exceeds limit
