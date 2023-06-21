@@ -1,7 +1,8 @@
 # hello-world
 Just my first repository
 
-tag<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <window xmlns="http://jmix.io/schema/ui/window"
         xmlns:c="http://jmix.io/schema/ui/jpql-condition"
         caption="msg://plannedWorkBrowse.caption"
