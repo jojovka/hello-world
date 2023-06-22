@@ -2,323 +2,355 @@
 Just my first repository
 
 
-package kz.eub.moncl.screen.plannedwork;
-
-import com.vaadin.ui.UI;
-import io.jmix.core.DataManager;
-import io.jmix.core.security.SystemAuthenticator;
-import io.jmix.core.usersubstitution.CurrentUserSubstitution;
-import io.jmix.ui.Notifications;
-import io.jmix.ui.UiComponents;
-import io.jmix.ui.component.DataGrid;
-import io.jmix.ui.ScreenBuilders;
-import io.jmix.ui.icon.Icons;
-import io.jmix.ui.icon.JmixIcon;
-import io.jmix.ui.model.CollectionContainer;
-import io.jmix.ui.model.CollectionLoader;
-import io.jmix.ui.screen.*;
-import kz.eub.moncl.app.service.DisposableWorkService;
-import kz.eub.moncl.app.service.PlannedWorkService;
-import kz.eub.moncl.entity.DisposableTask;
-import kz.eub.moncl.entity.DisposableTaskDTO;
-import kz.eub.moncl.entity.PlannedWork;
-import org.slf4j.Logger;
-import org.springframework.beans.factory.annotation.Autowired;
-import kz.eub.moncl.entity.EReportStatus;
-import org.springframework.security.core.userdetails.UserDetails;
-
-import java.net.URISyntaxException;
-import java.security.KeyManagementException;
-import java.security.KeyStoreException;
-import java.security.NoSuchAlgorithmException;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.LocalTime;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Timer;
-import java.util.TimerTask;
-import java.util.concurrent.atomic.AtomicBoolean;
-
-@UiController("mcl_PlannedWork.browse")
-@UiDescriptor("planned-work-browse.xml")
-@LookupComponent("plannedWorksTable")
-public class PlannedWorkBrowse extends StandardLookup<PlannedWork> {
-    private static final Logger log = org.slf4j.LoggerFactory.getLogger(PlannedWorkBrowse.class);
-    @Autowired
-    private DataGrid<PlannedWork> plannedWorksTable;
-    @Autowired
-    private DataGrid<DisposableTask> disposableTasksTable;
-    @Autowired
-    private CollectionContainer<PlannedWork> plannedWorksDc;
-    @Autowired
-    private CollectionContainer<DisposableTaskDTO> disposableTasksDTODc;
-    @Autowired
-    private CurrentUserSubstitution currentUserSubstitution;
-    @Autowired
-    private PlannedWorkService plannedWorkService;
-    @Autowired
-    private DisposableWorkService disposableWorkService;
-    @Autowired
-    private DataManager dataManager;
-    @Autowired
-    private Notifications notifications;
-    @Autowired
-    private CollectionLoader<PlannedWork> plannedWorksDl;
-//    @Autowired
-//    private CollectionLoader<DisposableTask> disposableTasksDl;
-    @Autowired
-    private ScreenBuilders screenBuilders;
-    @Autowired
-    private SystemAuthenticator systemAuthenticator;
-    @Autowired
-    protected UiComponents uiComponents;
-
-    private UI currentUI;
-    private Timer timer;
-
-    @Subscribe
-    public void onInit(InitEvent event) throws URISyntaxException, KeyStoreException, NoSuchAlgorithmException, KeyManagementException {
-        String authKey = disposableWorkService.zabbixAuth();
-        List<DisposableTaskDTO> disposableTaskDTOList = new ArrayList<>();
-        disposableTaskDTOList.addAll(disposableWorkService.triggerGet(authKey));
-
-        disposableTasksDTODc.setItems(disposableTaskDTOList);
-        disposableTasksTable.repaint();
-
-        //Update table every minute using timer
-        refreshData();
-
-        plannedWorksTable.getColumnNN("priority")
-                .setStyleProvider(plannedWork -> {
-                    switch (plannedWork.getPriority()) {
-                        case MEDIUM:
-                            return "low-priority";
-                        case HIGH:
-                            return "mid-priority";
-                        case HIGHEST:
-                            return "high-priority";
-                        default:
-                            return null;
-                    }
-                });
-
-        disposableTasksTable.getColumnNN("priority")
-                .setStyleProvider(PlannedWork -> {
-                    switch (PlannedWork.getPriority()) {
-                        case MEDIUM:
-                            return "low-priority";
-                        case HIGH:
-                            return "mid-priority";
-                        case HIGHEST:
-                            return "high-priority";
-                        default:
-                            return null;
-                    }
-                });
-
-        //<----------Planned Work---------->
-        //<----------Start Button---------->
-        AtomicBoolean flagCheck = new AtomicBoolean(true);
-        loadPlannedWorksDL();
-        UserDetails user = currentUserSubstitution.getAuthenticatedUser();
-        DataGrid.ButtonRenderer<PlannedWork> gridButtonRendererPlannedWorksButtonStart =
-                getApplicationContext().getBean(DataGrid.ButtonRenderer.class);
-        gridButtonRendererPlannedWorksButtonStart.setRendererClickListener(
-                clickableRendererClickEvent -> {
-                    PlannedWork plannedWorkStartItem = clickableRendererClickEvent.getItem();
-                    if (plannedWorksDc.getItem(plannedWorkStartItem.getId()).getStatus().equals(EReportStatus.APPOINTED)) {
-                        plannedWorksDc.getItem(plannedWorkStartItem.getId()).setStatus(EReportStatus.IN_PROCESS);
-                        plannedWorksDc.getItem(plannedWorkStartItem.getId()).setActualStartTime(LocalTime.now().withNano(0));
-                        LocalDateTime actualStartDateTime = LocalDate.now().atTime(plannedWorksDc.getItem(plannedWorkStartItem.getId()).getActualStartTime());
-                        plannedWorksDc.getItem(plannedWorkStartItem.getId()).setFullName(user.getUsername());
-                        int lastVersionedItem = plannedWorkStartItem.getVersion();
-                        plannedWorksDc.getItem(plannedWorkStartItem.getId()).setVersion(lastVersionedItem);//Обновление optimistic lock
-                        dataManager.save(plannedWorksDc.getItem(plannedWorkStartItem.getId()));
-                        plannedWorksDl.load();
-
-                        plannedWorksTable.repaint();
-                    } else {
-                        notifications.create()
-                                .withCaption("Невозможно начать выполнение плановой работы")
-                                .withDescription("Работа была начата или завершена")
-                                .show();
-                    }
-                });
-        this.plannedWorksTable.getColumn("btnStart")
-                .setRenderer(gridButtonRendererPlannedWorksButtonStart);
-        //</----------Start Button---------->
-
-        //<----------Finish Button---------->
-        DataGrid.ButtonRenderer<PlannedWork> gridButtonRendererButtonFinish =
-                getApplicationContext().getBean(DataGrid.ButtonRenderer.class);
-        gridButtonRendererButtonFinish.setRendererClickListener(
-                clickableRendererClickEvent -> {
-                    AtomicBoolean lateEndFlag = new AtomicBoolean(false);
-                    PlannedWork plannedWorkEndItem = clickableRendererClickEvent.getItem();
-                    if (plannedWorksDc.getItem(plannedWorkEndItem.getId()).getStatus().equals(EReportStatus.IN_PROCESS)) {
-                        plannedWorksDc.getItem(plannedWorkEndItem.getId()).setStatus(EReportStatus.FINISHED);
-                        plannedWorksDc.getItem(plannedWorkEndItem.getId()).setActualEndTime(LocalTime.now().withNano(0));
-                        int versionWithoutComment = plannedWorkEndItem.getVersion();
-                        plannedWorksDc.getItem(plannedWorkEndItem.getId()).setVersion(versionWithoutComment);
-                        dataManager.save(plannedWorksDc.getItem(plannedWorkEndItem.getId()));
-                        LocalDateTime actualEndDateTime = LocalDate.now().atTime(plannedWorksDc.getItem(plannedWorkEndItem.getId()).getActualEndTime());
-                        if (actualEndDateTime.isAfter((plannedWorksDc.getItem(plannedWorkEndItem.getId()).getScheduledEndDateTime())))
-                            lateEndFlag.set(true);
-                        if (lateEndFlag.get() == flagCheck.get()) {
-                            screenBuilders.editor(PlannedWork.class, this)
-                                    .editEntity(plannedWorksDc.getItem(plannedWorkEndItem.getId()))
-                                    .withOpenMode(OpenMode.DIALOG)
-                                    .build()
-                                    .show();
-                            plannedWorksDl.load();
-                            plannedWorksTable.repaint();
-                        } else {
-                            int versionWithComment = clickableRendererClickEvent.getItem().getVersion();
-                            plannedWorksDc.getItem(plannedWorkEndItem.getId()).setVersion(versionWithComment);//Обновление optimistic lock
-                            plannedWorkService.setFinishedPlannedWorkToReport(plannedWorksDc.getItem(plannedWorkEndItem.getId()));
-                            plannedWorksDl.load();
-                            plannedWorksTable.repaint();
-                        }
-                    } else {
-                        notifications.create()
-                                .withCaption("Невозможно завершить выполнение плановой работы")
-                                .withDescription("Работа не была начата или уже завершена")
-                                .show();
-                    }
-                });
-        this.plannedWorksTable.getColumn("btnFinish")
-                .setRenderer(gridButtonRendererButtonFinish);
-        //</----------Finish Button---------->
-        //</----------Planned Work---------->
-
-
-        //<----------Disposable Work---------->
-        //<----------Start Button---------->
-//        loadDisposableWorksDL();
-//        DataGrid.ButtonRenderer<DisposableTask> gridButtonRendererDisposableWorkButtonStart =
-//                getApplicationContext().getBean(DataGrid.ButtonRenderer.class);
-//        gridButtonRendererDisposableWorkButtonStart.setRendererClickListener(
-//                clickableRendererClickEvent -> {
-//                    DisposableTask disposableTaskStartItem = clickableRendererClickEvent.getItem();
-//                    if (disposableTasksDTODc.getItem(disposableTaskStartItem.getId()).getStatus().equals(EReportStatus.APPOINTED)) {
-//                        disposableTasksDc.getItem(disposableTaskStartItem.getId()).setStatus(EReportStatus.IN_PROCESS);
-//                        disposableTasksDc.getItem(disposableTaskStartItem.getId()).setActualStartTime(LocalTime.now().withNano(0));
-//                        disposableTasksDc.getItem(disposableTaskStartItem.getId()).setFullName(user.getUsername());
-//                        int lastVersionedItem = clickableRendererClickEvent.getItem().getVersion();
-//                        disposableTasksDc.getItem(disposableTaskStartItem.getId()).setVersion(lastVersionedItem);//Обновление optimistic lock
-//                        dataManager.save(disposableTasksDc.getItem(disposableTaskStartItem.getId()));
-//                        disposableTasksDl.load();
-//                        disposableTasksTable.repaint();
-//                    } else {
-//                        notifications.create()
-//                                .withCaption("Невозможно начать выполнение разовой задачи")
-//                                .withDescription("Задача была начата или завершена")
-//                                .show();
-//                    }
-//                });
-//        this.disposableTasksTable.getColumn("btnStartDisposableTask")
-//                .setRenderer(gridButtonRendererDisposableWorkButtonStart);
-//        //</----------Start Button---------->
-//
-//        //<----------Finish Button---------->
-//        DataGrid.ButtonRenderer<DisposableTask> gridButtonRendererDisposableWorkButtonFinish =
-//                getApplicationContext().getBean(DataGrid.ButtonRenderer.class);
-//        gridButtonRendererDisposableWorkButtonFinish.setRendererClickListener(
-//                clickableRendererClickEvent -> {
-//                    DisposableTask disposableTaskEndItem = clickableRendererClickEvent.getItem();
-//                    if (disposableTasksDc.getItem(disposableTaskEndItem.getId()).getStatus().equals(EReportStatus.IN_PROCESS)) {
-//                        disposableTasksDc.getItem(disposableTaskEndItem.getId()).setStatus(EReportStatus.FINISHED);
-//                        disposableTasksDc.getItem(disposableTaskEndItem.getId()).setActualEndTime(LocalTime.now().withNano(0));
-//                        dataManager.save(disposableTasksDc.getItem(disposableTaskEndItem.getId()));
-//                        disposableTasksTable.repaint();
-//                        plannedWorkService.setFinishedDisposableWorkToReport(disposableTasksDc.getItem(disposableTaskEndItem.getId()));
-//                        disposableTasksDl.load();
-//                    } else {
-//                        notifications.create()
-//                                .withCaption("Невозможно начать выполнение разовой задачи")
-//                                .withDescription("Задача была начата или завершена")
-//                                .show();
-//                    }
-//                });
-//        this.disposableTasksTable.getColumn("btnFinishDisposableTask")
-//                .setRenderer(gridButtonRendererDisposableWorkButtonFinish);
-        //</----------Finish Button---------->
-        //</-----------Disposable Work---------->
-    }
-
-    private void loadPlannedWorksDL() {
-        plannedWorksDl.setQuery("select p from mcl_PlannedWork as p where p.status=:status or p.status=:status1");
-        plannedWorksDl.setParameter("status", EReportStatus.APPOINTED);
-        plannedWorksDl.setParameter("status1", EReportStatus.IN_PROCESS);
-    }
-
-//    private void loadDisposableWorksDL() {
-//        disposableTasksDl.setQuery("select p from mcl_DisposableTask as p where (p.status=:status or p.status=:status1) or (p.status=:status3 and p.date>=:currentDate)");
-//        disposableTasksDl.setParameter("status", EReportStatus.APPOINTED);
-//        disposableTasksDl.setParameter("status1", EReportStatus.IN_PROCESS);
-//        disposableTasksDl.setParameter("status3", EReportStatus.FINISHED);
-//        disposableTasksDl.setParameter("currentDate", LocalDate.now());
-//    }
-
-    @Install(to = "plannedWorksTable.btnFinish", subject = "columnGenerator")
-    private Icons.Icon plannedWorksTableBtnFinishColumnGenerator
-            (DataGrid.ColumnGeneratorEvent<PlannedWork> columnGeneratorEvent) {
-        return JmixIcon.STOP;
-    }
-
-    @Install(to = "plannedWorksTable.btnStart", subject = "columnGenerator")
-    private Icons.Icon plannedWorksTableBtnStartColumnGenerator
-            (DataGrid.ColumnGeneratorEvent<PlannedWork> columnGeneratorEvent) {
-        return JmixIcon.PLAY;
-    }
-
-//    @Install(to = "disposableTasksTable.btnFinishDisposableTask", subject = "columnGenerator")
-//    private Icons.Icon disposableTasksTableBtnFinishColumnGenerator
-//            (DataGrid.ColumnGeneratorEvent<DisposableTask> columnGeneratorEvent) {
-//        return JmixIcon.STOP;
-//    }
-//
-//    @Install(to = "disposableTasksTable.btnStartDisposableTask", subject = "columnGenerator")
-//    private Icons.Icon disposableTasksTableBtnStartColumnGenerator
-//            (DataGrid.ColumnGeneratorEvent<DisposableTask> columnGeneratorEvent) {
-//        return JmixIcon.PLAY;
-//    }
-
-    @Install(to = "plannedWorksTable", subject = "rowStyleProvider")
-    private String styledGridRowStyleProvider(PlannedWork plannedWork) {
-        if (LocalDateTime.now().isAfter(plannedWork.getScheduledStartDateTime().minusMinutes(10)) && LocalDateTime.now().isBefore(plannedWork.getScheduledStartDateTime())) {
-            return "ten-minutes";
-        } else if (LocalDateTime.now().isAfter(plannedWork.getScheduledEndDateTime())) {
-            return "late";
-        }else if (LocalDateTime.now().isAfter(plannedWork.getScheduledStartDateTime()) && LocalDateTime.now().isBefore(plannedWork.getScheduledEndDateTime())) {
-            return "started";
-        }
-        return null;
-    }
-
-    @Subscribe
-    public void onBeforeClose(BeforeCloseEvent event) {
-        log.info("Updating data canceled");
-        timer.cancel();
-    }
-
-    private void refreshData(){
-        currentUI = UI.getCurrent();
-        timer = new Timer();
-        timer.schedule(new TimerTask() {
-            @Override
-            public void run() {
-                systemAuthenticator.withSystem(()->{
-                    log.info("Starting update PlannedWorkBrowse UI...");
-                    currentUI.access(() ->{
-                        plannedWorksDl.load();
-                        currentUI.getCurrent().push();
-                    });
-                    log.info("finished update PlannedWorkBrowse UI");
-                    return null;
-                });
-            }
-        }, 0, 60*1000);
-    }
-}
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta charset="UTF-8" />
+</head>
+<body>
+<#assign head = Root.bands.head/> 
+<#assign body = Root.bands.body /> 
+<#assign body2 = Root.bands.body2 /> 
+<#assign body3 = Root.bands.body3 /> 
+<#assign body4 = Root.bands.body4 />
+<#assign body5 = Root.bands.body5 />
+<#assign body6 = Root.bands.body6 />
+<#assign body7 = Root.bands.body7 />
+<#assign body8 = Root.bands.body8 />
+<#assign body9 = Root.bands.body9 />
+<#assign body10 = Root.bands.body10 />
+<#assign body11 = Root.bands.body11 />
+<#assign body12 = Root.bands.body12 />
+<#assign body13 = Root.bands.body13 />
+<#assign body14 = Root.bands.body14 />
+<#assign body15 = Root.bands.body15 />
+<h3 style="font-family: verdana;">
+<#list head as head>
+СВЕРОЧНЫЙ ОТЧЕТ ПО ВЫДАННЫМ ЗАЙМАМ МЕЖДУ СИСТЕМАМИ FIS И RS-LOANS ЗА ${head.fields.rep_date}</h3>
+</#list>
+<#list body as body>
+<#list body2 as body2>
+<p style="font-size:13px; font-family: verdana;"> 
+Количество профинансированных заявок в FIS: <b>${body.fields.count}</b> , количество договоров в RS-Loans: <b>${body2.fields.count} </b></p>
+</#list>
+</#list> 
+<p style="font-size:13px; font-family: verdana;"> 
+Есть в FIS, отсутствуют в RS-Loans: 
+</p>
+<table border="1">
+<tr style="background-color: #c2c3b5; font-size:13px; font-family: verdana;">
+<td style="padding: 0 5 0 5;">№</td>
+<td style="padding: 0 5 0 5;">Дата заведения заявки/дата договора</td>
+<td style="padding: 0 5 0 5;">№ договора / № заявки</td>
+<td style="padding: 0 5 0 5;">Сумма финансирования</td>
+<td style="padding: 0 5 0 5;">ФИО клиента</td>
+<td style="padding: 0 5 0 5;">ИИН клиента</td>
+</tr>
+ <#list body3 as body3>
+<tr style="font-size:13px; font-family: verdana;">
+<td  style="padding: 0 5 0 5;">${body3.fields.NUMM}</td>
+<td  style="padding: 0 5 0 5;">${body3.fields.DVZ}</td>
+<td  style="padding: 0 5 0 5;">${body3.fields.NOM}</td>
+<td  style="padding: 0 5 0 5;">${body3.fields.SUMM}</td>
+<td  style="padding: 0 5 0 5;">${body3.fields.FIO}</td>
+<td  style="padding: 0 5 0 5;">${body3.fields.IIN}</td>
+</tr>
+</#list>
+</table>
+<p style="font-size:13px; font-family: verdana;"> 
+Есть в RS-Loans, отсутствуют в FIS: 
+</p>
+<table border="1">
+<tr style="background-color: #c2c3b5; font-size:13px; font-family: verdana;">
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">№</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">Дата заведения заявки/дата договора</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">№ договора / № заявки</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">Сумма финансирования</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">ФИО клиента</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">ИИН клиента</td>
+</tr>
+<#list body4 as body4>
+<tr style="font-size:13px; font-family: verdana;">
+<td style="padding: 0 5 0 5;">${body4.fields.NUMM}</td>
+<td style="padding: 0 5 0 5;">${body4.fields.REGDATE}</td>
+<td style="padding: 0 5 0 5;">${body4.fields.DOGNUM}</td>
+<td style="padding: 0 5 0 5;">${body4.fields.SUMM}</td>
+<td style="padding: 0 5 0 5;">${body4.fields.FIO}</td>
+<td style="padding: 0 5 0 5;">${body4.fields.IIN}</td>
+</tr>
+</#list>
+</table>
+<p style="font-size:13px; font-family: verdana;"> 1. Расхождение в поле ИИН: </p>
+<table border="1">
+<tr style="background-color: #c2c3b5; font-size:13px; font-family: verdana;">
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">№</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">Дата заведения заявки/дата договора</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">№ договора / № заявки</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">Сумма финансирования</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">ФИО клиента</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">ИИН клиента</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">Значение в ФИС</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">Значение в РС</td>
+</tr>
+<#list body5 as body5>
+<tr style="font-size:13px; font-family: verdana;">
+<td style="padding: 0 5 0 5;">${body5.fields.NUMM}</td>
+<td style="padding: 0 5 0 5;">${body5.fields.FINDATE}</td>
+<td style="padding: 0 5 0 5;">${body5.fields.DOGNUM}</td>
+<td style="padding: 0 5 0 5;">${body5.fields.FINSUM}</td>
+<td style="padding: 0 5 0 5;">${body5.fields.FIO}</td>
+<td style="padding: 0 5 0 5;">${body5.fields.IIN}</td>
+<td style="padding: 0 5 0 5;">${body5.fields.TFIS}</td>
+<td style="padding: 0 5 0 5;">${body5.fields.TRS}</td>
+</tr>
+</#list>
+</table>
+<p style="font-size:13px; font-family: verdana;"> 2. Расхождение в поле ФИО: </p>
+<table border="1">
+<tr style="background-color: #c2c3b5; font-size:13px; font-family: verdana;">
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">№</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">Дата заведения заявки/дата договора</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">№ договора / № заявки</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">Сумма финансирования</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">ФИО клиента</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">ИИН клиента</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">Значение в ФИС</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">Значение в РС</td>
+</tr>
+<#list body6 as body6>
+<tr style="font-size:13px; font-family: verdana;">
+<td style="padding: 0 5 0 5;">${body6.fields.NUMM}</td>
+<td style="padding: 0 5 0 5;">${body6.fields.FINDATE}</td>
+<td style="padding: 0 5 0 5;">${body6.fields.DOGNUM}</td>
+<td style="padding: 0 5 0 5;">${body6.fields.FINSUM}</td>
+<td style="padding: 0 5 0 5;">${body6.fields.FIO}</td>
+<td style="padding: 0 5 0 5;">${body6.fields.IIN}</td>
+<td style="padding: 0 5 0 5;">${body6.fields.TFIS}</td>
+<td style="padding: 0 5 0 5;">${body6.fields.TRS}</td>
+</tr>
+</#list>
+</table>
+<p style="font-size:13px; font-family: verdana;"> 3. Расхождение в поле Код клиента: </p>
+<table border="1">
+<tr style="background-color: #c2c3b5; font-size:13px; font-family: verdana;">
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">№</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">Дата заведения заявки/дата договора</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">№ договора / № заявки</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">Сумма финансирования</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">ФИО клиента</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">ИИН клиента</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">Значение в ФИС</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">Значение в РС</td>
+</tr>
+<#list body7 as body7>
+<tr style="font-size:13px; font-family: verdana;">
+<td style="padding: 0 5 0 5;">${body7.fields.NUMM}</td>
+<td style="padding: 0 5 0 5;">${body7.fields.FINDATE}</td>
+<td style="padding: 0 5 0 5;">${body7.fields.DOGNUM}</td>
+<td style="padding: 0 5 0 5;">${body7.fields.FINSUM}</td>
+<td style="padding: 0 5 0 5;">${body7.fields.FIO}</td>
+<td style="padding: 0 5 0 5;">${body7.fields.IIN}</td>
+<td style="padding: 0 5 0 5;">${body7.fields.TFIS}</td>
+<td style="padding: 0 5 0 5;">${body7.fields.TRS}</td>
+</tr>
+</#list>
+</table>
+<p style="font-size:13px; font-family: verdana;"> 4. Расхождение в поле Наименование торговой точки: </p>
+<table border="1">
+<tr style="background-color: #c2c3b5; font-size:13px; font-family: verdana;">
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">№</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">Дата заведения заявки/дата договора</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">№ договора / № заявки</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">Сумма финансирования</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">ФИО клиента</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">ИИН клиента</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">Значение в ФИС</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">Значение в РС</td>
+</tr>
+<#list body8 as body8>
+<tr style="font-size:13px; font-family: verdana;">
+<td style="padding: 0 5 0 5;">${body8.fields.NUMM}</td>
+<td style="padding: 0 5 0 5;">${body8.fields.FINDATE}</td>
+<td style="padding: 0 5 0 5;">${body8.fields.DOGNUM}</td>
+<td style="padding: 0 5 0 5;">${body8.fields.FINSUM}</td>
+<td style="padding: 0 5 0 5;">${body8.fields.FIO}</td>
+<td style="padding: 0 5 0 5;">${body8.fields.IIN}</td>
+<td style="padding: 0 5 0 5;">${body8.fields.TFIS}</td>
+<td style="padding: 0 5 0 5;">${body8.fields.TRS}</td>
+</tr>
+</#list>
+</table>
+<p style="font-size:13px; font-family: verdana;"> 5. Расхождение в поле Дата финансирования: </p>
+<table border="1"><tr style="background-color: #c2c3b5; font-size:13px; font-family: verdana;">
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">№</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">Дата заведения заявки/дата договора</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">№ договора / № заявки</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">Сумма финансирования</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">ФИО клиента</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">ИИН клиента</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">Значение в ФИС</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">Значение в РС</td>
+</tr>
+<#list body9 as body9>
+<tr style="font-size:13px; font-family: verdana;">
+<td style="padding: 0 5 0 5;">${body9.fields.NUMM}</td>
+<td style="padding: 0 5 0 5;">${body9.fields.FINDATE}</td>
+<td style="padding: 0 5 0 5;">${body9.fields.DOGNUM}</td>
+<td style="padding: 0 5 0 5;">${body9.fields.FINSUM}</td>
+<td style="padding: 0 5 0 5;">${body9.fields.FIO}</td>
+<td style="padding: 0 5 0 5;">${body9.fields.IIN}</td>
+<td style="padding: 0 5 0 5;">${body9.fields.TFIS}</td>
+<td style="padding: 0 5 0 5;">${body9.fields.TRS}</td>
+</tr>
+</#list>
+</table>
+<p style="font-size:13px; font-family: verdana;"> 6. Расхождение в поле Дата окончания договора: </p>
+<table border="1">
+<tr style="background-color: #c2c3b5; font-size:13px; font-family: verdana;">
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">№</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">Дата заведения заявки/дата договора</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">№ договора / № заявки</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">Сумма финансирования</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">ФИО клиента</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">ИИН клиента</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">Значение в ФИС</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">Значение в РС</td>
+</tr>
+<#list body10 as body10>
+<tr style="font-size:13px; font-family: verdana;">
+<td style="padding: 0 5 0 5;">${body10.fields.NUMM}</td>
+<td style="padding: 0 5 0 5;">${body10.fields.FINDATE}</td>
+<td style="padding: 0 5 0 5;">${body10.fields.DOGNUM}</td>
+<td style="padding: 0 5 0 5;">${body10.fields.FINSUM}</td>
+<td style="padding: 0 5 0 5;">${body10.fields.FIO}</td>
+<td style="padding: 0 5 0 5;">${body10.fields.IIN}</td>
+<td style="padding: 0 5 0 5;">${body10.fields.TFIS}</td>
+<td style="padding: 0 5 0 5;">${body10.fields.TRS}</td>
+</tr>
+</#list>
+</table>
+<p style="font-size:13px; font-family: verdana;"> 7. Расхождение в поле Сумма финансирования: </p>
+<table border="1">
+<tr style="background-color: #c2c3b5; font-size:13px; font-family: verdana;">
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">№</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">Дата заведения заявки/дата договора</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">№ договора / № заявки</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">Сумма финансирования</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">ФИО клиента</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">ИИН клиента</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">Значение в ФИС</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">Значение в РС</td>
+</tr>
+<#list body11 as body11>
+<tr style="font-size:13px; font-family: verdana;">
+<td style="padding: 0 5 0 5;">${body11.fields.NUMM}</td>
+<td style="padding: 0 5 0 5;">${body11.fields.FINDATE}</td>
+<td style="padding: 0 5 0 5;">${body11.fields.DOGNUM}</td>
+<td style="padding: 0 5 0 5;">${body11.fields.FINSUM}</td>
+<td style="padding: 0 5 0 5;">${body11.fields.FIO}</td>
+<td style="padding: 0 5 0 5;">${body11.fields.IIN}</td>
+<td style="padding: 0 5 0 5;">${body11.fields.TFIS}</td>
+<td style="padding: 0 5 0 5;">${body11.fields.TRS}</td>
+</tr>
+</#list>
+</table>
+<p style="font-size:13px; font-family: verdana;"> 8. Расхождение в поле Дата первого платежа: </p>
+<table border="1"><tr style="background-color: #c2c3b5; font-size:13px; font-family: verdana;">
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">№</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">Дата заведения заявки/дата договора</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">№ договора / № заявки</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">Сумма финансирования</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">ФИО клиента</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">ИИН клиента</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">Значение в ФИС</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">Значение в РС</td>
+</tr>
+<#list body12 as body12>
+<tr style="font-size:13px; font-family: verdana;">
+<td style="padding: 0 5 0 5;">${body12.fields.NUMM}</td>
+<td style="padding: 0 5 0 5;">${body12.fields.FINDATE}</td>
+<td style="padding: 0 5 0 5;">${body12.fields.DOGNUM}</td>
+<td style="padding: 0 5 0 5;">${body12.fields.FINSUM}</td>
+<td style="padding: 0 5 0 5;">${body12.fields.FIO}</td>
+<td style="padding: 0 5 0 5;">${body12.fields.IIN}</td>
+<td style="padding: 0 5 0 5;">${body12.fields.TFIS}</td>
+<td style="padding: 0 5 0 5;">${body12.fields.TRS}</td>
+</tr>
+</#list>
+</table>
+<p style="font-size:13px; font-family: verdana;"> 9. Расхождение в поле Перечисление в страховую компанию (сумма страховой премии): </p>
+<table border="1">
+<tr style="background-color: #c2c3b5; font-size:13px; font-family: verdana;">
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">№</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">Дата заведения заявки/дата договора</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">№ договора / № заявки</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">Сумма финансирования</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">ФИО клиента</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">ИИН клиента</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">Значение в ФИС</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">Значение в РС</td>
+</tr>
+<#list body13 as body13>
+<tr style="font-size:13px; font-family: verdana;">
+<td style="padding: 0 5 0 5;">${body13.fields.NUMM}</td>
+<td style="padding: 0 5 0 5;">${body13.fields.FINDATE}</td>
+<td style="padding: 0 5 0 5;">${body13.fields.DOGNUM}</td>
+<td style="padding: 0 5 0 5;">${body13.fields.FINSUM}</td>
+<td style="padding: 0 5 0 5;">${body13.fields.FIO}</td>
+<td style="padding: 0 5 0 5;">${body13.fields.IIN}</td>
+<td style="padding: 0 5 0 5;">${body13.fields.TFIS}</td>
+<td style="padding: 0 5 0 5;">${body13.fields.TRS}</td>
+</tr>
+</#list>
+</table>
+<p style="font-size:13px; font-family: verdana;"> 10. Расхождение в поле Срок займа (в месяцах): </p>
+<table border="1">
+<tr style="background-color: #c2c3b5; font-size:13px; font-family: verdana;">
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">№</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">Дата заведения заявки/дата договора</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">№ договора / № заявки</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">Сумма финансирования</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">ФИО клиента</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">ИИН клиента</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">Значение в ФИС</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">Значение в РС</td>
+</tr>
+<#list body14 as body14>
+<tr style="font-size:13px; font-family: verdana;">
+<td style="padding: 0 5 0 5;">${body14.fields.NUMM}</td>
+<td style="padding: 0 5 0 5;">${body14.fields.FINDATE}</td>
+<td style="padding: 0 5 0 5;">${body14.fields.DOGNUM}</td>
+<td style="padding: 0 5 0 5;">${body14.fields.FINSUM}</td>
+<td style="padding: 0 5 0 5;">${body14.fields.FIO}</td>
+<td style="padding: 0 5 0 5;">${body14.fields.IIN}</td>
+<td style="padding: 0 5 0 5;">${body14.fields.TFIS}</td>
+<td style="padding: 0 5 0 5;">${body14.fields.TRS}</td>
+</tr>
+</#list>
+</table>
+<p style="font-size:13px; font-family: verdana;"> 11. Расхождение в поле Тариф: </p>
+<table border="1"><tr style="background-color: #c2c3b5; font-size:13px; font-family: verdana;">
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">№</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">Дата заведения заявки/дата договора</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">№ договора / № заявки</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">Сумма финансирования</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">ФИО клиента</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">ИИН клиента</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">Значение в ФИС</td>
+<td style="padding: 0 5 0 5; font-size:13px; font-family: verdana;">Значение в РС</td>
+</tr>
+<#list body15 as body15>
+<tr style="font-size:13px; font-family: verdana;">
+<td style="padding: 0 5 0 5;">${body15.fields.NUMM}</td>
+<td style="padding: 0 5 0 5;">${body15.fields.FINDATE}</td>
+<td style="padding: 0 5 0 5;">${body15.fields.DOGNUM}</td>
+<td style="padding: 0 5 0 5;">${body15.fields.FINSUM}</td>
+<td style="padding: 0 5 0 5;">${body15.fields.FIO}</td>
+<td style="padding: 0 5 0 5;">${body15.fields.IIN}</td>
+<td style="padding: 0 5 0 5;">${body15.fields.TFIS}</td>
+<td style="padding: 0 5 0 5;">${body15.fields.TRS}</td>
+</tr>
+</#list>
+</table>
+</body>
+</html>
