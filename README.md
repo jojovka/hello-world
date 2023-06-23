@@ -93,3 +93,28 @@ private Long accruedFinesPenalties;
     private Long turnoverIntAmountCur;
     private Date updateDate;
     private String updatedBy;
+
+@Subscribe("attachmentFileField")
+    public void onAttachmentFileFieldFileUploadSucceed(SingleFileUploadField.FileUploadSucceedEvent event) {
+        FileRef fileRef = attachmentFileField.getValue();
+        if (fileRef != null) {
+            try {
+                try (InputStream is = fileStorage.openStream(fileRef)) {
+                    try (ReadableWorkbook wb = new ReadableWorkbook(is)) {
+                        Sheet sheet = wb.getFirstSheet();
+                        try (Stream<Row> rows = sheet.openStream()) {
+                            //исать код здесь
+                        }
+                    }
+                }
+            } catch (IOException e) {
+                notifications.create(Notifications.NotificationType.ERROR)
+                        .withCaption(messages.getMessage(e.getMessage()))
+                        .show();
+            }
+        } else {
+            notifications.create(Notifications.NotificationType.ERROR)
+                    .withCaption(messages.getMessage("ФАЙЛ НЕ ЗАГРУЖЕН"))
+                    .show();
+        }
+    }
