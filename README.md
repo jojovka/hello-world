@@ -1,120 +1,48 @@
 # hello-world
 Just my first repository
 
-private Long accruedFinesPenalties;
-    private Long accruedFinesPenaltiesCur;
-    private Date actualIssueDate;
-    private Long actualReceivedPayment;
-    private String checkRequiredMes;
-    private Long contractS;
-    private String crFlClassification;
-    private String crFlClassificationNb;
-    private String crFlProvBalAccMsfoNb;
-    private String crFlProvBalAccMsfoS;
-    private String crFlProvBalAccNb;
-    private String crFlProvBalAccS;
-    private Long crFlProvVal;
-    private Long crFlProvValMsfo;
-    private String isImpaired;
-    private String isRestructured;
-    private Date maturityDate;
-    private Date operationDate;
-    private String portfFlowBalAccountNb;
-    private String portfFlowBalAccountS;
-    private String portfFlowMsfoBalAccNb;
-    private String portfFlowMsfoBalAccS;
-    private String primaryContractNo;
-    private Date prolongationDate;
-    private Long provisionRate;
-    private String refRemnsLimitAccountNo;
-    private String refRemnsLimitAccountNoNb;
-    private String remnsCorrectionBalAccNb;
-    private String remnsCorrectionBalAccS;
-    private Long remnsCorrectionVal;
-    private Long remnsCorrectionValCur;
-    private String remnsDebCurrBalaccNb;
-    private String remnsDebCurrBalaccS;
-    private Long remnsDebCurrentVal;
-    private Long remnsDebCurrentValCur;
-    private String remnsDebPastdBalaccNb;
-    private String remnsDebPastdBalaccS;
-    private Date remnsDebPastdueCloseDate;
-    private Date remnsDebPastdueOpenDate;
-    private Long remnsDebPastdueVal;
-    private Long remnsDebPastdueValCur;
-    private String remnsDebWriteBalaccNb;
-    private String remnsDebWriteBalaccS;
-    private Date remnsDebWriteOffDate;
-    private Long remnsDebWriteOffVal;
-    private Long remnsDebWriteOffValCur;
-    private Long remnsDebtForgivenValue;
-    private Long remnsDebtForgivenValueCur;
-    private Long remnsDebtWriteOffVal;
-    private Long remnsDebtWriteOffValCur;
-    private String remnsDiscBalAccNb;
-    private String remnsDiscBalAccNbIdAdd;
-    private String remnsDiscBalAccS;
-    private Long remnsDiscValueVal;
-    private Long remnsDiscValueValCur;
-    private Long remnsDiscountAdd;
-    private Long remnsDiscountVal;
-    private Long remnsDiscountValCur;
-    private Long remnsDiscountValCurAdd;
-    private String remnsIntCurrBalaccNb;
-    private String remnsIntCurrBalaccS;
-    private Long remnsIntCurrentVal;
-    private Long remnsIntCurrentValCur;
-    private Long remnsIntForgivenValue;
-    private Long remnsIntForgivenValueCur;
-    private String remnsIntPastdBalaccNb;
-    private String remnsIntPastdBalaccS;
-    private Date remnsIntPastdueCloseDate;
-    private Date remnsIntPastdueOpenDate;
-    private Long remnsIntPastdueVal;
-    private Long remnsIntPastdueValCur;
-    private Date remnsIntWriteOffDate;
-    private Long remnsIntWriteOffVal;
-    private Long remnsIntWriteOffValCur;
-    private String remnsLimBalAccNb;
-    private String remnsLimBalAccS;
-    private Long remnsLimVal;
-    private Long remnsLimValCur;
-    private Long remnsPenaltyForgivenValCur;
-    private Long remnsPenaltyForgivenValue;
-    private Long remnsPenaltyValue;
-    private Long remnsPenaltyValueCur;
-    private Long remnsPenaltyWriteOff;
-    private Long remnsPenaltyWriteOffCur;
-    private Date restructuringDate;
-    private String sourceSystem;
-    private Long turnoverDebAmount;
-    private Long turnoverDebAmountCur;
-    private Long turnoverIntAmount;
-    private Long turnoverIntAmountCur;
-    private Date updateDate;
-    private String updatedBy;
-
 @Subscribe("attachmentFileField")
-    public void onAttachmentFileFieldFileUploadSucceed(SingleFileUploadField.FileUploadSucceedEvent event) {
-        FileRef fileRef = attachmentFileField.getValue();
-        if (fileRef != null) {
-            try {
-                try (InputStream is = fileStorage.openStream(fileRef)) {
-                    try (ReadableWorkbook wb = new ReadableWorkbook(is)) {
-                        Sheet sheet = wb.getFirstSheet();
-                        try (Stream<Row> rows = sheet.openStream()) {
-                            //исать код здесь
+public void onAttachmentFileFieldFileUploadSucceed(SingleFileUploadField.FileUploadSucceedEvent event) {
+    FileRef fileRef = attachmentFileField.getValue();
+    if (fileRef != null) {
+        try {
+            try (InputStream is = fileStorage.openStream(fileRef)) {
+                try (ReadableWorkbook wb = new ReadableWorkbook(is)) {
+                    Sheet sheet = wb.getFirstSheet();
+                    try (Stream<Row> rows = sheet.openStream()) {
+                        List<Credreg> entities = new ArrayList<>();
+                        rows.forEach(row -> {
+                            Credreg credreg = metadata.create(Credreg.class);
+                            row.forEach(cell -> {
+                                String columnName = cell.getColumnName();
+                                Object value = cell.getValue();
+                                // Check if value is not null or empty string
+                                if (value != null && !value.toString().isEmpty()) {
+                                    credreg.setValue(columnName, value);
+                                }
+                            });
+                            entities.add(credreg);
+                            // Commit every 1000 entities to optimize performance
+                            if (entities.size() >= 1000) {
+                                dataManager.commit(new CommitContext(entities));
+                                entities.clear();
+                            }
+                        });
+                        // Commit remaining entities
+                        if (!entities.isEmpty()) {
+                            dataManager.commit(new CommitContext(entities));
                         }
                     }
                 }
-            } catch (IOException e) {
-                notifications.create(Notifications.NotificationType.ERROR)
-                        .withCaption(messages.getMessage(e.getMessage()))
-                        .show();
             }
-        } else {
+        } catch (IOException e) {
             notifications.create(Notifications.NotificationType.ERROR)
-                    .withCaption(messages.getMessage("ФАЙЛ НЕ ЗАГРУЖЕН"))
+                    .withCaption(messages.getMessage(e.getMessage()))
                     .show();
         }
+    } else {
+        notifications.create(Notifications.NotificationType.ERROR)
+                .withCaption(messages.getMessage("ФАЙЛ НЕ ЗАГРУЖЕН"))
+                .show();
     }
+}
