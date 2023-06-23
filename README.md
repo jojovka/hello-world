@@ -10,24 +10,47 @@ public void onAttachmentFileFieldFileUploadSucceed(SingleFileUploadField.FileUpl
                 try (ReadableWorkbook wb = new ReadableWorkbook(is)) {
                     Sheet sheet = wb.getFirstSheet();
                     try (Stream<Row> rows = sheet.openStream()) {
-                        // Получить первую строку (заголовки столбцов)
-                        Row header = rows.iterator().next();
-
-                        // Пройти по каждой строке данных
-                        rows.forEach(dataRow -> {
-                            Credreg credreg = dataManager.create(Credreg.class); // Создать новый экземпляр Credreg
-                            for (int i = 0; i < dataRow.getCellCount(); i++) {
-                                String columnName = header.getCell(i).asString();
-                                String methodName = "set" + columnName.substring(0, 1).toUpperCase() + columnName.substring(1);
+                        List<Credreg> credregs = new ArrayList<>();
+                        // Row 0 usually contains the column names, skip it
+                        rows.skip(1).forEach(row -> {
+                            Credreg credreg = dataManager.create(Credreg.class);
+                            for (int i = 0; i < row.getCellCount(); i++) {
+                                Cell cell = row.getCell(i);
+                                String columnName = sheet.range(0, i).value().toString();
+                                String methodName = "set" + capitalize(columnName);
+                                Method method;
                                 try {
-                                    Method method = Credreg.class.getMethod(methodName, String.class); // Предполагается, что все поля - строки
-                                    method.invoke(credreg, dataRow.getCell(i).asString()); // Задать значение поля
+                                    Object value;
+                                    switch (cell.type()) {
+                                        case NUMBER:
+                                            value = cell.asNumber().intValue(); // or .doubleValue() etc. depending on your field type
+                                            break;
+                                        case BOOLEAN:
+                                            value = cell.asBoolean();
+                                            break;
+                                        case TEXT:
+                                            String text = cell.asText();
+                                            if ("IS_IMPAIRED".equals(columnName.toUpperCase())) {
+                                                value = "ИСТИНА".equals(text);
+                                            } else {
+                                                value = text;
+                                            }
+                                            break;
+                                        default:
+                                            value = cell.value();
+                                    }
+                                    method = Credreg.class.getMethod(methodName, value.getClass());
+                                    method.invoke(credreg, value);
                                 } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
-                                    // Обработка исключений
+                                    notifications.create(Notifications.NotificationType.ERROR)
+                                        .withCaption(messages.getMessage(e.getMessage()))
+                                        .show();
                                 }
                             }
-                            dataManager.commit(credreg); // Сохранить Credreg
+                            credregs.add(credreg);
                         });
+                        CommitContext commitContext = new CommitContext(credregs);
+                        dataManager.commit(commitContext);
                     }
                 }
             }
@@ -42,3 +65,9 @@ public void onAttachmentFileFieldFileUploadSucceed(SingleFileUploadField.FileUpl
             .show();
     }
 }
+
+
+
+
+
+
