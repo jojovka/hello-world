@@ -5,33 +5,36 @@ Just my first repository
 public void onAttachmentFileFieldFileUploadSucceed(SingleFileUploadField.FileUploadSucceedEvent event) {
     FileRef fileRef = attachmentFileField.getValue();
     if (fileRef != null) {
-        try {
-            try (InputStream is = fileStorage.openStream(fileRef)) {
-                try (ReadableWorkbook wb = new ReadableWorkbook(is)) {
-                    Sheet sheet = wb.getFirstSheet();
-                    try (Stream<Row> rows = sheet.openStream()) {
-                        List<Credreg> entities = new ArrayList<>();
-                        rows.forEach(row -> {
-                            Credreg credreg = metadata.create(Credreg.class);
-                            row.forEach(cell -> {
-                                String columnName = cell.getColumnName();
-                                Object value = cell.getValue();
-                                // Check if value is not null or empty string
-                                if (value != null && !value.toString().isEmpty()) {
-                                    credreg.setValue(columnName, value);
-                                }
-                            });
-                            entities.add(credreg);
-                            // Commit every 1000 entities to optimize performance
-                            if (entities.size() >= 1000) {
-                                dataManager.commit(new CommitContext(entities));
-                                entities.clear();
+        try (InputStream is = fileStorage.openStream(fileRef)) {
+            try (ReadableWorkbook wb = new ReadableWorkbook(is)) {
+                Sheet sheet = wb.getFirstSheet();
+                Map<Integer, String> fieldNames = new HashMap<>();
+                try (Stream<Row> rows = sheet.openStream()) {
+                    // Assuming the first row contains column names
+                    Row headerRow = rows.iterator().next();
+                    for (Cell cell : headerRow) {
+                        fieldNames.put(cell.getColumnIndex(), cell.asString());
+                    }
+                    
+                    List<Credreg> entities = new ArrayList<>();
+                    rows.skip(1).forEach(row -> {  // Skip the header row
+                        Credreg credreg = dataManager.create(Credreg.class);
+                        row.forEach(cell -> {
+                            int columnIndex = cell.getColumnIndex();
+                            Object value = cell.getValue();
+                            String fieldName = fieldNames.get(columnIndex);
+                            if (fieldName != null && value != null && !value.toString().isEmpty()) {
+                                credreg.setValue(fieldName, value);
                             }
                         });
-                        // Commit remaining entities
-                        if (!entities.isEmpty()) {
+                        entities.add(credreg);
+                        if (entities.size() >= 1000) {
                             dataManager.commit(new CommitContext(entities));
+                            entities.clear();
                         }
+                    });
+                    if (!entities.isEmpty()) {
+                        dataManager.commit(new CommitContext(entities));
                     }
                 }
             }
