@@ -3,7 +3,8 @@ Just my first repository
 
 @Subscribe("attachmentFileField")
     public void onAttachmentFileFieldFileUploadSucceed(SingleFileUploadField.FileUploadSucceedEvent event) {
-        FileRef fileRef = attachmentFileField.getValue();
+        SingleFileUploadField uploadField = (SingleFileUploadField) event.getSource();
+        FileRef fileRef = uploadField.getValue();
         if (fileRef != null) {
             try {
                 try (InputStream is = fileStorage.openStream(fileRef)) {
@@ -11,12 +12,13 @@ Just my first repository
                         Sheet sheet = wb.getFirstSheet();
                         try (Stream<Row> rows = sheet.openStream()) {
                             List<Credreg> credregs = new ArrayList<>();
+                            Row headerRow = rows.iterator().next(); // Get the header row
                             // Row 0 usually contains the column names, skip it
                             rows.skip(1).forEach(row -> {
                                 Credreg credreg = dataManager.create(Credreg.class);
                                 for (int i = 0; i < row.getCellCount(); i++) {
                                     Cell cell = row.getCell(i);
-                                    String columnName = sheet.range(0, i).value().toString();
+                                    String columnName = headerRow.getCell(i).getText().toString();
                                     String methodName = "set" + capitalize(columnName);
                                     Method method;
                                     try {
@@ -43,39 +45,32 @@ Just my first repository
                                         method.invoke(credreg, value);
                                     } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
                                         notifications.create(Notifications.NotificationType.ERROR)
-                                                .withCaption(messages.getMessage(e.getMessage()))
+                                                .withCaption(e.getMessage())
                                                 .show();
                                     }
                                 }
                                 credregs.add(credreg);
                             });
-                            CommitContext commitContext = new CommitContext(credregs);
-                            dataManager.commit(commitContext);
+                            int batchSize = 5000;
+                            List<Credreg> batch = new ArrayList<>(batchSize);
+                            for (int i = 0; i < credregs.size(); i++) {
+                                batch.add(credregs.get(i));
+                                if ((i + 1) % batchSize == 0 || (i + 1) == credregs.size()) {
+                                    dataManager.save(batch);
+                                    batch.clear();
+                                }
+                            }
                         }
                     }
                 }
             } catch (IOException e) {
                 notifications.create(Notifications.NotificationType.ERROR)
-                        .withCaption(messages.getMessage(e.getMessage()))
+                        .withCaption(e.getMessage())
                         .show();
             }
         } else {
             notifications.create(Notifications.NotificationType.ERROR)
-                    .withCaption(messages.getMessage("ФАЙЛ НЕ ЗАГРУЖЕН"))
+                    .withCaption("ФАЙЛ НЕ ЗАГРУЖЕН")
                     .show();
         }
     }
-
-    public static String capitalize(String str){
-        if(str == null || str.isEmpty()){
-            return str;
-        }
-
-        return str.substring(0, 1).toUpperCase() + str.substring(1);
-    }
-
-
-
-
-
-
