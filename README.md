@@ -2,22 +2,24 @@
 Just my first repository
 
     @Subscribe("attachmentFileField")
-    public void onAttachmentFileFieldFileUploadSucceed(SingleFileUploadField.FileUploadSucceedEvent event) {
-        FileRef fileRef = attachmentFileField.getValue();
-        if (fileRef != null) {
-            try {
-                try (InputStream is = fileStorage.openStream(fileRef)) {
-                    try (ReadableWorkbook wb = new ReadableWorkbook(is)) {
-                        Sheet sheet = wb.getFirstSheet();
-                        List<Row> rowList = sheet.openStream().collect(Collectors.toList());
-                        List<Credreg> credregs = new ArrayList<>();
-                        Row headerRow = rowList.get(0); // Get the header row
+public void onAttachmentFileFieldFileUploadSucceed(SingleFileUploadField.FileUploadSucceedEvent event) {
+    FileRef fileRef = attachmentFileField.getValue();
+    if (fileRef != null) {
+        try {
+            try (InputStream is = fileStorage.openStream(fileRef)) {
+                try (ReadableWorkbook wb = new ReadableWorkbook(is)) {
+                    Sheet sheet = wb.getFirstSheet();
 
-                        // Skip row 0, which usually contains the column names
-                        for (int rowIndex = 1; rowIndex < rowList.size(); rowIndex++) {
-                            Row row = rowList.get(rowIndex);
+                    AtomicInteger rowIndex = new AtomicInteger();
+                    Row headerRow = null;
+                    List<Credreg> credregs = new ArrayList<>();
+                    int batchSize = 5000;
+
+                    sheet.openStream().forEach(row -> {
+                        if (rowIndex.getAndIncrement() == 0) {
+                            headerRow = row; // Get the header row
+                        } else {
                             Credreg credreg = dataManager.create(Credreg.class);
-
                             for (int i = 0; i < row.getCellCount(); i++) {
                                 Cell cell = row.getCell(i);
                                 String columnName = headerRow.getCell(i).getText().toString();
@@ -52,27 +54,14 @@ Just my first repository
                                 }
                             }
                             credregs.add(credreg);
-                        }
-                        int batchSize = 5000;
-                        List<Credreg> batch = new ArrayList<>(batchSize);
-                        for (int i = 0; i < credregs.size(); i++) {
-                            batch.add(credregs.get(i));
-                            if ((i + 1) % batchSize == 0 || (i + 1) == credregs.size()) {
-                                dataManager.save(batch);
-                                batch.clear();
+
+                            // If we've reached batch size or this is the last row, save the data
+                            if (credregs.size() == batchSize || !sheet.openStream().iterator().hasNext()) {
+                                dataManager.save(credregs);
+                                credregs.clear();
                             }
                         }
-                    }
+                    });
                 }
-            } catch (IOException e) {
-                notifications.create(Notifications.NotificationType.ERROR)
-                        .withCaption(e.getMessage())
-                        .show();
             }
-        } else {
-            notifications.create(Notifications.NotificationType.ERROR)
-                    .withCaption("ФАЙЛ НЕ ЗАГРУЖЕН")
-                    .show();
-
         }
-    }
