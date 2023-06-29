@@ -76,3 +76,5 @@ Just my first repository
             }
         }
     }
+
+at kz.eub.report360.screen.credreg.CredregBrowse.lambda$onAttachmentFileFieldFileUploadSucceed$0
