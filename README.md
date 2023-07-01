@@ -105,3 +105,6 @@ Just my first repository
                     .show();
         }
     }
+
+Caused by: org.dhatim.fastexcel.reader.ExcelReaderException: Wrong cell type STRING, wanted NUMBER
+
