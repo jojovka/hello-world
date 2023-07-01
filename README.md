@@ -11,7 +11,6 @@ Just my first repository
                         Sheet sheet = wb.getFirstSheet();
                         try (Stream<Row> rows = sheet.openStream()) {
                             List<Credreg> batch = new ArrayList<>(5000);
-                            int counter = 1;
                             rows.skip(1)
                                     .forEach(row -> {
                                         Credreg credreg = dataManager.create(Credreg.class);
@@ -33,7 +32,7 @@ Just my first repository
                                         }
 
                                         if (cell1 != null){
-                                            credreg.setOperationDate(new Date(cell1.asString()));
+                                            credreg.setOperationDate(cell1.asDate());
                                         } else if (cell1 == null) {
                                             credreg.setOperationDate(null);
                                         }
@@ -51,45 +50,46 @@ Just my first repository
                                         }
 
                                         if (cell6 != null){
-                                            credreg.setOperationDate(new Date(cell6.asString()));
+                                            credreg.setTurnoverIntAmount(cell6.asNumber().doubleValue());
                                         } else if (cell6 == null){
-                                            credreg.setOperationDate(null);
-                                        }
-
-                                        if (cell7 != null){
-                                            credreg.setTurnoverIntAmount(cell7.asNumber().doubleValue());
-                                        } else if (cell7 == null){
                                             credreg.setTurnoverIntAmount(null);
                                         }
 
-                                        if (cell8 != null){
-                                            credreg.setTurnoverIntAmountCur(cell8.asNumber().doubleValue());
-                                        } else if (cell8 == null){
+                                        if (cell7 != null){
+                                            credreg.setTurnoverIntAmountCur(cell7.asNumber().doubleValue());
+                                        } else if (cell7 == null){
                                             credreg.setTurnoverIntAmountCur(null);
                                         }
 
-                                        if (cell9 != null){
-                                            credreg.setTurnoverDebAmount(cell9.asNumber().longValue());
-                                        } else if (cell9 == null){
+                                        if (cell8 != null){
+                                            credreg.setTurnoverDebAmount(cell8.asNumber().longValue());
+                                        } else if (cell8 == null){
                                             credreg.setTurnoverDebAmount(null);
                                         }
 
-                                        if (cell10 != null){
-                                            credreg.setTurnoverDebAmountCur(cell10.asNumber().longValue());
-                                        } else if (cell10 == null){
+                                        if (cell9 != null){
+                                            credreg.setTurnoverDebAmountCur(cell9.asNumber().longValue());
+                                        } else if (cell9 == null){
                                             credreg.setTurnoverDebAmountCur(null);
                                         }
 
+                                        if (cell10 != null){
+                                            credreg.setRemnsDebCurrentVal(cell10.asNumber().doubleValue());
+                                        } else if (cell10 == null){
+                                            credreg.setRemnsDebCurrentVal(null);
+                                        }
+
+                                        System.out.println("$$$$ ROW #" + row.getRowNum() + " IS FINISHED $$$");
 
                                         batch.add(credreg);
 
                                         if (batch.size() == 5000) {
-                                            batch.forEach(entity -> dataManager.save(entity));
+                                            dataManager.save(batch);
                                             batch.clear();
                                         }
                                     });
                             if (!batch.isEmpty()) {
-                                batch.forEach(entity -> dataManager.save(entity));
+                                dataManager.save(batch);
                             }
                         }
                     }
@@ -105,7 +105,3 @@ Just my first repository
                     .show();
         }
     }
-        }
-    }
-
-at kz.eub.report360.screen.credreg.CredregBrowse.lambda$onAttachmentFileFieldFileUploadSucceed$0
