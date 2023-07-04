@@ -154,3 +154,5 @@ public class CredregBrowse extends StandardLookup<Credreg> {
 }
 
 Caused by: java.lang.ClassCastException: class java.lang.String cannot be cast to class java.sql.Clob (java.lang.String is in module java.base of loader 'bootstrap'; java.sql.Clob is in module java.sql of loader 'platform')
+
+Caused by: java.lang.IllegalStateException: Unsupported entity type class java.util.ArrayList
