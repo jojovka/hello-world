@@ -36,3 +36,24 @@ public class EmailService {
         }
     }
 }
+
+rest-services.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<services xmlns="http://jmix.io/schema/rest/services">
+    <service name="r360_EmailReportsService">
+        <method name="emailFisRsReport">
+            <param name="templateCode"/>
+            <param name="date"/>
+            <param name="recipients"/>
+        </method>
+    </service>
+
+    <service name="r360_EmailService">
+        <method name="emailReport">
+            <param name="templateCode"/>
+            <param name="recipients"/>
+            <param name="params"/>
+        </method>
+    </service>
+</services>
+
